@@ -208,6 +208,7 @@ func (r *DorisClusterReconciler) updateDorisClusterStatus(ctx context.Context, d
 		return ctrl.Result{}, err
 	}
 
+	keepTransitionTimes(&dcr.Status, &edcr.Status)
 	// if the status is not equal before reconcile and now the status is not available we should requeue.
 	if !inconsistentStatus(&dcr.Status, &edcr) {
 		if r.reconcile(dcr) {

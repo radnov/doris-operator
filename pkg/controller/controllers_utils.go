@@ -28,6 +28,26 @@ func disAggregatedInconsistentStatus(ests *dv1.DorisDisaggregatedClusterStatus, 
 	return reflect.DeepEqual(ests, &ddc.Status)
 }
 
+// keepTransitionTimes carries the stored LastTransitionTime over to every component whose phase did not
+// change. Each reconcile builds the component conditions with the current time, so without this the
+// new status never equals the stored one and the requeue for components that are not available yet
+// is never reached.
+func keepTransitionTimes(status *v1.DorisClusterStatus, stored *v1.DorisClusterStatus) {
+	keepTransitionTime(status.FEStatus, stored.FEStatus)
+	keepTransitionTime(status.BEStatus, stored.BEStatus)
+	if status.CnStatus != nil && stored.CnStatus != nil {
+		keepTransitionTime(&status.CnStatus.ComponentStatus, &stored.CnStatus.ComponentStatus)
+	}
+	keepTransitionTime(status.BrokerStatus, stored.BrokerStatus)
+}
+
+func keepTransitionTime(status *v1.ComponentStatus, stored *v1.ComponentStatus) {
+	if status == nil || stored == nil || status.ComponentCondition.Phase != stored.ComponentCondition.Phase {
+		return
+	}
+	status.ComponentCondition.LastTransitionTime = stored.ComponentCondition.LastTransitionTime
+}
+
 func inconsistentStatus(status *v1.DorisClusterStatus, dcr *v1.DorisCluster) bool {
 	return inconsistentFEStatus(status.FEStatus, dcr.Status.FEStatus) ||
 		inconsistentBEStatus(status.BEStatus, dcr.Status.BEStatus) ||
