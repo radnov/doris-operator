@@ -352,8 +352,29 @@ func (r *DorisClusterReconciler) watchConfigMapBuilder(builder *ctrl.Builder) *c
 func (r *DorisClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	builder := r.resourceBuilder(ctrl.NewControllerManagedBy(mgr))
 	builder = r.watchPodBuilder(builder)
+	builder = r.watchFEEndpointsBuilder(builder)
 	builder = r.watchConfigMapBuilder(builder)
 	return builder.Complete(r)
+}
+
+// watchFEEndpointsBuilder enqueues the DorisCluster when the endpoints of its FE access service change.
+// The BE, CN and broker are only created once those endpoints list a ready address, and the endpoints
+// controller often adds the address after the FE pod has already turned ready.
+func (r *DorisClusterReconciler) watchFEEndpointsBuilder(builder *ctrl.Builder) *ctrl.Builder {
+	return builder.Watches(&corev1.Endpoints{}, handler.EnqueueRequestsFromMapFunc(feEndpointsToDorisCluster))
+}
+
+// feEndpointsToDorisCluster maps the endpoints of an FE access service to the DorisCluster that owns the
+// service, using the service labels that the endpoints controller copies onto the endpoints.
+func feEndpointsToDorisCluster(ctx context.Context, endpoints client.Object) []reconcile.Request {
+	labels := endpoints.GetLabels()
+	dorisName := labels[dorisv1.OwnerReference]
+	if dorisName == "" || labels[dorisv1.ComponentLabelKey] != string(dorisv1.Component_FE) ||
+		labels[dorisv1.ServiceRoleForCluster] != string(dorisv1.Service_Role_Access) {
+		return nil
+	}
+
+	return []reconcile.Request{{NamespacedName: types.NamespacedName{Name: dorisName, Namespace: endpoints.GetNamespace()}}}
 }
 
 // Init initial the DorisClusterReconciler for reconcile.
